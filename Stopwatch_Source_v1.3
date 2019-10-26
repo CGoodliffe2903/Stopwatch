@@ -1,0 +1,201 @@
+#include P16F84A.INC 
+
+__config _XT_OSC & _WDT_OFF & _PWRTE_ON
+
+;initialise necessary registers note that each reg is only 8-bits
+DELAY_COUNT1	    EQU		H'21'
+DELAY_COUNT2	    EQU		H'22'
+DELAY_COUNT4	    EQU		H'24'
+DELAY_COUNT5	    EQU		H'25'
+TIMER		          EQU		H'0B'
+COUNTER		        EQU		H'0C'
+PAUSE_STATE	      EQU		H'0D'
+TIMER2		        EQU		H'0E'
+COUNTER2	        EQU		H'0F'
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;initialisation of ports and counter values;;;;;;;;;;;;;;;;;;;;;;;
+
+ORG H'0'
+bsf	    STATUS,5      ;select bank 1
+movlw	    B'00000000' ;set up port B as all outputs
+movwf	    TRISB
+movlw	    B'00000011' ;set up RA0,1 & 2 to inputs
+movwf	    TRISA
+movlw	    B'00000000' ;set timer = 0
+movwf	    TIMER
+movlw	    B'00000000' ;set timer2 = 0
+movwf	    TIMER2
+movlw	    B'00001010' ;set counter = 10
+movwf	    COUNTER
+movlw	    B'00001010' ;set counter2 = 10
+movwf	    COUNTER2
+bcf	    STATUS,5 ;select bank 0
+
+	    
+call	    start_button_check
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;main_loop;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+main_loop
+    movlw	    B'11111111'
+    movwf	    PORTB
+    movlw	    B'00000100'
+    movwf	    PORTA
+    movfw	    TIMER
+    call	    translate
+    movwf	    PORTB
+    movlw	    B'11111111'
+    movwf	    PORTB
+    movlw	    B'00001000'
+    movwf	    PORTA
+    movfw	    TIMER2
+    call	    translate
+    movwf	    PORTB
+    call	    delay
+    call	    update_timer_counter
+    goto	    main_loop
+    
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;start_button_check;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+start_button_check
+
+    is_pause_on
+	btfsc	    PORTA,0           ;start/pause button is mapped to RA1 port on uController
+	goto	    is_pause_on
+	call	    is_resume_on      
+	return
+    
+    is_resume_on
+	btfsc	    PORTA,1
+	call	    restart_function
+	movlw	    B'11111111'
+	movwf	    PORTB
+	movlw	    B'00000100'
+	movwf	    PORTA
+	movfw	    TIMER
+	call	    translate
+	movwf	    PORTB
+	movlw	    B'11111111'
+	movwf	    PORTB
+	movlw	    B'00001000'
+	movwf	    PORTA
+	movfw	    TIMER2
+	call	    translate
+	movwf	    PORTB
+	btfss	    PORTA,0
+	goto	    is_resume_on
+	call	    debounce_delay
+	btfss	    PORTA,0
+	goto	    is_resume_on
+    
+    is_resume_off
+	btfsc	    PORTA,0
+	goto	    is_resume_off
+	return
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+delay
+    movlw	D'255'
+    movwf	DELAY_COUNT1 ;set value of 255 to delay count 1
+    movlw	D'15'
+    movwf	DELAY_COUNT2 ;set value of 255 to delay count 2
+    delay_loop
+    
+    ;creation of the delay
+    movlw	B'11111111'
+    movwf	PORTB
+    movlw	B'00000100'
+    movwf	PORTA
+    movfw	TIMER
+    call	translate
+    movwf	PORTB
+    movlw	B'11111111'
+    movwf	PORTB
+    movlw	B'00001000'
+    movwf	PORTA
+    movfw	TIMER2
+    call	translate
+    movwf	PORTB
+    decfsz	DELAY_COUNT1,F
+    goto	delay_loop
+    btfsc	PORTA,0
+    call	start_button_check
+    decfsz	DELAY_COUNT2,F ;value of delaycount2 - 1
+    goto	delay_loop ;skip command if delaycount2 == 0
+    btfsc	PORTA,0
+    call	start_button_check
+    return
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;counter_to_LED;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+translate
+    addwf	PCL
+    retlw	B'01000001' ;0
+    retlw	B'01011111' ;1
+    retlw	B'00100101' ;2
+    retlw	B'00001101' ;3
+    retlw	B'00011011' ;4
+    retlw	B'10001001' ;5
+    retlw	B'10000001' ;6
+    retlw	B'01011101' ;7
+    retlw	B'00000001' ;8
+    retlw	B'00001001' ;9
+    return
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+update_timer_counter
+    incf	TIMER
+    decfsz	COUNTER         ;if(counter reaches zero)
+    return
+    movlw	B'00000000'       ;reset timer to zero
+    movwf	TIMER
+    movlw	B'00001010'
+    movwf	COUNTER           ;reset timer to 
+    incf	TIMER2
+    decfsz	COUNTER2
+    return
+    movlw	B'00000000'
+    movwf	TIMER2
+    movlw	B'00001010'
+    movwf	COUNTER2
+    return
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+debounce_delay
+    decfsz	DELAY_COUNT4
+    goto	debounce_delay
+    return
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+restart_function
+    btfss	PORTA,1
+    return
+    goto	restart_button_check
+    
+restart_button_check
+    btfsc	PORTA,1
+    goto	restart_button_check
+    call	reset_values
+    return
+    
+reset_values
+    clrf	TIMER
+    clrf	TIMER2
+    movlw	B'00001010'
+    movwf	COUNTER
+    movlw	B'00001010' ;set counter2 = 10
+    movwf	COUNTER2
+    movlw	B'11111111'
+    movwf	PORTB
+    movlw	B'00000100'
+    movwf	PORTA
+    movfw	TIMER
+    call	translate
+    movwf	PORTB
+    movlw	B'11111111'
+    movwf	PORTB
+    movlw	B'00001000'
+    movwf	PORTA
+    movfw	TIMER2
+    call	translate
+    movwf	PORTB
+    return
+end
